@@ -1,1 +1,0 @@
-TASKKILL /IM rmiregistry.exe /F

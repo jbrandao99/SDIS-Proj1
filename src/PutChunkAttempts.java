@@ -1,34 +1,44 @@
+import java.net.DatagramPacket;
 import java.util.concurrent.TimeUnit;
 
 public class PutChunkAttempts implements Runnable {
     private int time;
     private int attempts;
     private int counter;
-    private Message message;
+    private DatagramPacket message;
     private String chunkKey;
     private int desiredRepDeg;
-    private Node dest;
+    private String messageHeader;
 
-    public PutChunkAttempts(int time, int attempts, Message message, String chunkKey, int repDeg, Node dest) {
+    public PutChunkAttempts(int time, int attempts, DatagramPacket message, String chunkKey, int repDeg, String messageHeader) {
         this.time = time;
         this.attempts = attempts;
         this.message = message;
         this.chunkKey = chunkKey;
         this.desiredRepDeg = repDeg;
         this.counter = 1;
-        this.dest = dest;
+        this.messageHeader = messageHeader;
     }
 
     @Override
     public void run() {
-        int currentRepDeg = Peer.getStorage().getChunkCurrentDegree(this.chunkKey);
+        int currentRepDeg = PeerProtocol.getPeer().getStorage().getChunkCurrentDegree(this.chunkKey);
 
-        if (currentRepDeg < this.desiredRepDeg && this.counter < this.attempts) {
-            Peer.getThreadExecutor().execute(new SendMessagesManager(this.message, this.dest.getAddress(), this.dest.getPort()));
-            this.message.printSentMessage();
+        if (!PeerProtocol.getProtocol_version().equals("1.0")) {
+            if (currentRepDeg < this.desiredRepDeg && this.counter < this.attempts && !PeerProtocol.getPeer().getStorage().hasStored(this.chunkKey)) {
+                new Thread(new SendMessagesManager(this.message)).start();
+                System.out.printf("Sent message: %s\n", this.messageHeader);
+                this.counter++;
+                this.time = this.time * 2;
+                PeerProtocol.getThreadExecutor().schedule(this, this.time, TimeUnit.SECONDS);
+            }
+        }
+        else if (this.counter < this.attempts && !PeerProtocol.getPeer().getStorage().hasStored(this.chunkKey)) {
+            new Thread(new SendMessagesManager(this.message)).start();
+            System.out.printf("Sent message: %s\n", this.messageHeader);
             this.counter++;
             this.time = this.time * 2;
-            Peer.getThreadExecutor().schedule(this, this.time, TimeUnit.SECONDS);
+            PeerProtocol.getThreadExecutor().schedule(this, this.time, TimeUnit.SECONDS);
         }
     }
 }

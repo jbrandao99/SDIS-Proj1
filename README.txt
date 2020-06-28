@@ -1,30 +1,40 @@
-CLEAN:
+To build the project, run in this order and from directory scripts:
+1. /bin/bash compile.sh - creates a directory build with the compiled java classes
+2. /bin/bash setup.sh - creates a directory resources in the directory build
+3. /bin/bash rmiregistry.sh port - sets up rmi
 
-$ rm *.class
-$ rmdir /s /q PeerProtocol
-$ rmdir /s /q Storage
+To run the project:
+Use separate terminals for each peer, and another one for TestApp.
 
-BUILD:
+4./bin/bash peer.sh version(1.0 or 2.0) peer_id access_point MC MDB MDR(address port) - to lunch peer.
+Example of a channel: 224.0.0.15 8000
+This creates a PeerProtocol directory and a subdirectory for the Peer with id peer_id, where the files and chunks will be saved.
 
-$ javac *.java
-$ rmiregistry &
+Examples of usage for each protocol:
+- Backup
+    /bin/bash test.sh access_point BACKUP file_absolute_path replication_deg
+    In this protocol, script test.sh initially makes a copy of the specified file to resources directory inside build directory.
+    Then the file is also exported to the Peer directory inside PeerProtocol folder.
+- Restore
+    /bin/bash test.sh access_point RESTORE file_name
+- Delete
+    /bin/bash test.sh access_point DELETE file_name
+- Reclaim
+    /bin/bash test.sh access_point RECLAIM 0
+- State
+    /bin/bash test.sh access_point STATE
+Important!
+file_name != file_absolute_path
 
-INITIATOR NODE:
+To clean up:
+/bin/bash cleanup.sh peer_id - deletes the directory of a peer inside PeerProtocol directory and also its directory in Storage.
 
-$ java -Djavax.net.ssl.keyStore=keystore -Djavax.net.ssl.keyStorePassword=sdis1920 -Djavax.net.ssl.trustStore=truststore -Djavax.net.ssl.trustStorePassword=sdis1920 Peer <access_point> 127.0.0.1 <port>
+When writing the scripts, a fault was detected in the version 1.0 of the backup protocol. A condition was missing which prevents the peer from using all its 5 attempts of sending PUTCHUNK, even when the STORED message is received sucessfully.
+The problem was solved and the tag was changed.
 
-NODE
+JAVA SE version 11
 
-$ java -Djavax.net.ssl.keyStore=keystore -Djavax.net.ssl.keyStorePassword=sdis1920 -Djavax.net.ssl.trustStore=truststore -Djavax.net.ssl.trustStorePassword=sdis1920 Peer <access_point> 127.0.0.1 <port> 127.0.0.1 <join_port>
+T3G05
 
-TESTAPP:
-
-$ java TestApp <access_point> <protocol> <operand_1>*
-
-T3G22
-
-Gustavo Nunes Ribeiro de Magalhães - up201705072@fe.up.pt
-Nuno Miguel Teixeira Cardoso - up201706162@fe.up.pt
 João Francisco de Pinho Brandão - up201705573@fe.up.pt
-Tiago Gonçalves da Silva - up201705985@fe.up.pt
-
+Nuno Miguel Teixeira Cardoso - up201706162@fe.up.pt

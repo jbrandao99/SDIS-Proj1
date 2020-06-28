@@ -1,6 +1,8 @@
-import java.io.*;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
+import java.io.BufferedInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.UnsupportedEncodingException;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
@@ -33,13 +35,9 @@ public class FileInfo implements java.io.Serializable {
         String directory = this.file.getParent();
         String fileId;
         try {
-            fileId = Utility.shatoString(Utility.sha256(filename+"."+date+"."+directory));
-        } catch (
-        NoSuchAlgorithmException e) {
-            e.printStackTrace();
-            return null;
-        } catch (
-        UnsupportedEncodingException e) {
+            fileId = sha256toString(sha256(filename+"."+date+"."+directory));
+        }
+        catch (Exception e) {
             e.printStackTrace();
             return null;
         }
@@ -47,12 +45,32 @@ public class FileInfo implements java.io.Serializable {
         return fileId;
     }
 
+    public byte[] sha256(String string) throws NoSuchAlgorithmException, UnsupportedEncodingException {
+        byte[] fileId = string.getBytes("UTF-8");
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+
+        return md.digest(fileId);
+    }
+
+    public String sha256toString(byte[] sha256) {
+        StringBuffer sha256String = new StringBuffer();
+
+        for (int i = 0; i < sha256.length; i++) {
+            String hex = Integer.toHexString(0xff & sha256[i]);
+            if (hex.length() == 1)
+                sha256String.append('0');
+            sha256String.append(hex);
+        }
+
+        // Convert message digest into bitstring
+        return sha256String.toString();
+    }
+
     public void prepareChunks(int replication_degree) {
         this.replication_degree = replication_degree;
         byte[] content = new byte[chunk_size];
         int chunck_nr = 0;
 
-        /* OLD VERSION
         try
         {
             FileInputStream fileIn = new FileInputStream(this.file);
@@ -72,41 +90,6 @@ public class FileInfo implements java.io.Serializable {
             System.err.format("Exception occurred trying to read '%s'.", file.getName());
             e.printStackTrace();
         }
-        */
-
-        //USING JAVA NIO
-        FileInputStream fis = null;
-        try {
-           fis = new FileInputStream(this.file);
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        }
-
-        FileChannel fc = fis.getChannel();
-        ByteBuffer bb = ByteBuffer.allocate(chunk_size);
-
-        int nr_bytes;
-        try{
-            while( (nr_bytes = fc.read(bb)) > 0 ){
-
-                byte[] info = Arrays.copyOf(content, nr_bytes);
-
-                bb.flip();
-                bb.get(info);
-                bb.clear();
-
-                Chunk chunk = new Chunk(this.fileId,chunck_nr ,nr_bytes, replication_degree,info);
-                chunks.add(chunk);
-                chunck_nr++;
-            }
-
-            fis.close();
-        }catch (IOException e){
-            e.printStackTrace();
-        }
-
-
-
     }
 
     public Set<Chunk> getChunks() {

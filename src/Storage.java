@@ -10,34 +10,50 @@ public class Storage implements java.io.Serializable {
     private double space_used;
 
     private File directory;
+    private boolean isUnix = true;
     private ArrayList<FileInfo> storedFiles = new ArrayList<>();
     private ArrayList<Chunk> storedChunks = new ArrayList<>();
     private ConcurrentHashMap<String, byte[]> restoreChunks = new ConcurrentHashMap<>();
     private ConcurrentHashMap<String, Integer> chunks_current_degrees = new ConcurrentHashMap<>();
-    private ConcurrentHashMap<String, ArrayList<String[]>> peers_with_chunks = new ConcurrentHashMap<>();
+    private ConcurrentHashMap<Integer, ArrayList<String>> peers_with_chunks = new ConcurrentHashMap<>();
+    private ArrayList<FileInfo> deletedFiles = new ArrayList<>();
     private double total_space;
 
-    public Storage() {
+    public Storage(int peer_id) {
         this.free_space = 1000000000;
-        this.space_used = 0;
-        createPeerDirectory();
+        System.out.println(this.free_space);
+        createPeerDirectory(peer_id);
     }
 
-    public ConcurrentHashMap<String, ArrayList<String[]>> getPeers_with_chunks() {
+    public ArrayList<FileInfo> getDeletedFiles() {
+        return deletedFiles;
+    }
+
+    public ConcurrentHashMap<Integer, ArrayList<String>> getPeers_with_chunks() {
         return this.peers_with_chunks;
     }
 
-    private void createPeerDirectory() {
+    private void createPeerDirectory(int peer_id) {
         String root = System.getProperty("user.dir");
-        String filepathUnix = "/PeerProtocol/Peer"+Peer.getPeer().getNodeId();
+        String filepathWin = "\\PeerProtocol\\Peer" + peer_id; // in case of Windows
+        String filepathUnix = "/PeerProtocol/Peer" + peer_id;
         String pathUnix = root + filepathUnix;
+        String pathWin = root + filepathWin;
 
         File tmpUnix = new File(pathUnix);
+        File tmpWin = new File(pathWin);
         this.directory = tmpUnix;
 
         if (!tmpUnix.exists()) {
             if (tmpUnix.mkdirs()) {
-                System.out.println("Created folder for Peer");
+                this.isUnix = true;
+                System.out.println("Created folder for Peer" + peer_id);
+            } else {
+                this.isUnix = false;
+                this.directory = tmpWin;
+                if (!tmpWin.exists())
+                    if (tmpWin.mkdirs())
+                        System.out.println("Created folder for Peer" + peer_id);
             }
         }
     }
@@ -46,18 +62,25 @@ public class Storage implements java.io.Serializable {
         return storedChunks;
     }
 
-    public void storeFile(FileInfo file) {
+    public boolean isUnix() {
+        return isUnix;
+    }
+
+    public void storeFile(FileInfo file, int peer_id) {
         if (file.getFile().length() > free_space)
             return;
 
-        String fileFolder = directory.getPath() + "/file" + file.getFileId();
+        String fileFolder;
+        if (this.isUnix)
+            fileFolder = directory.getPath() + "/file" + file.getFileId();
+        else fileFolder = directory.getPath() + "\\file" + file.getFileId();
 
         File tmp = new File(fileFolder);
         if (!tmp.exists()) {
             if (tmp.mkdirs()) {
-                System.out.println("Created folder for file " + file.getFile().getName() + " inside Peer");
+                System.out.println("Created folder for file " + file.getFile().getName() + " inside Peer" + peer_id);
                 exportFile(tmp, file.getFile());
-                System.out.println("Stored file " + file.getFile().getName() + " inside Peer");
+                System.out.println("Stored file " + file.getFile().getName() + " inside Peer" + peer_id);
             }
         } else exportFile(tmp, file.getFile());
 
@@ -65,15 +88,18 @@ public class Storage implements java.io.Serializable {
         this.storedFiles.add(file);
 
         //Decrement free space
-        //decFreeSpace(file.getFile().length());
+        decFreeSpace(file.getFile().length());
     }
 
     public void restoreFile(File fileIn) {
         if (fileIn.length() > free_space)
             return;
 
-        File fileFolder = new File(directory.getPath() + "/Restored");
+        File fileFolder;
         boolean can_export = true;
+        if (this.isUnix)
+            fileFolder = new File(directory.getPath() + "/Restored");
+        else fileFolder = new File(directory.getPath() + "\\Restored");
 
         if (!fileFolder.exists()) {
             if (fileFolder.mkdirs()) {
@@ -101,12 +127,15 @@ public class Storage implements java.io.Serializable {
         }
         this.restoreChunks.clear();
 
-        //decFreeSpace(fileOut.length());
+        decFreeSpace(fileOut.length());
     }
 
     public void exportFile(File directory, File fileIn) {
         try {
-            File fileOut = new File(directory.getPath() + "/" + fileIn.getName());
+            File fileOut;
+            if (this.isUnix) {
+                fileOut = new File(directory.getPath() + "/" + fileIn.getName());
+            } else fileOut = new File(directory.getPath() + "\\" + fileIn.getName());
 
             //READ
             FileInputStream myReader = new FileInputStream(fileIn);
@@ -136,14 +165,9 @@ public class Storage implements java.io.Serializable {
 
                 chunkIterator.remove();
                 decrementChunkOccurences(chunk.getFile_id()+"-"+chunk.getChunk_no());
-
-                remove_peer_chunks(chunk.getFile_id()+"-"+chunk.getChunk_no(), Peer.getPeer().getAddress(), Peer.getPeer().getPort());
+                remove_peer_chunks(chunk.getFile_id()+"-"+chunk.getChunk_no(), PeerProtocol.getPeer().getPeer_id());
             }
         }
-        deleteDirectory(fileId);
-    }
-
-    public void deleteDirectory(String fileId) {
         String fileFolder = directory.getPath() + "/file" + fileId;
         File folder = new File(fileFolder);
         folder.delete();
@@ -154,7 +178,10 @@ public class Storage implements java.io.Serializable {
             return;
 
         //Store on system
-        String fileFolder = directory.getPath() + "/file" + chunk.getFile_id();
+        String fileFolder;
+        if (this.isUnix)
+            fileFolder = directory.getPath() + "/file" + chunk.getFile_id();
+        else fileFolder = directory.getPath() + "\\file" + chunk.getFile_id();
 
         File tmp = new File(fileFolder);
         if (!tmp.exists()) {
@@ -170,13 +197,17 @@ public class Storage implements java.io.Serializable {
 
         //Decrement free space
         decFreeSpace(chunk.getContent().length);
+
         //Add to peers_with_chunks
-        add_peer_chunks(chunk.getFile_id()+"-"+chunk.getChunk_no(), Peer.getPeer().getAddress(), Peer.getPeer().getPort());
+        add_peer_chunks(chunk.getFile_id()+"-"+chunk.getChunk_no(), PeerProtocol.getPeer().getPeer_id());
     }
 
     public void exportChunk(File directory, Chunk chunk) {
         try {
-            File fileOut = new File(directory.getPath() + "/" + "chunk" + chunk.getChunk_no());
+            File fileOut;
+            if (this.isUnix) {
+                fileOut = new File(directory.getPath() + "/" + "chunk" + chunk.getChunk_no());
+            } else fileOut = new File(directory.getPath() + "\\" + "chunk" + chunk.getChunk_no());
 
             byte[] input = chunk.getContent();
 
@@ -189,19 +220,6 @@ public class Storage implements java.io.Serializable {
         }
     }
 
-    public boolean contains(String fileId, int chunkNo) {
-        ArrayList<Chunk> storedChunks = this.getStoredChunks();
-
-        for (int i = 0; i < storedChunks.size(); i++) {
-            Chunk chunk = storedChunks.get(i);
-            if (chunk.getFile_id().equals(fileId) && chunk.getChunk_no() == chunkNo) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     public void incrementChunkOccurences(String key) {
         if (this.chunks_current_degrees.containsKey(key)) {
             this.chunks_current_degrees.replace(key, this.chunks_current_degrees.get(key) + 1);
@@ -212,6 +230,7 @@ public class Storage implements java.io.Serializable {
 
     public void decrementChunkOccurences(String key) {
         if (this.chunks_current_degrees.containsKey(key) && this.chunks_current_degrees.get(key) != 0) {
+            System.out.println("decrementei");
             this.chunks_current_degrees.replace(key, this.chunks_current_degrees.get(key) - 1);
         }
     }
@@ -231,7 +250,6 @@ public class Storage implements java.io.Serializable {
     }
 
     public double getOccupiedSpace() {
-
         for (Chunk chunk : this.storedChunks) {
             space_used += chunk.getChunk_size();
         }
@@ -246,16 +264,22 @@ public class Storage implements java.io.Serializable {
         return total_space;
     }
 
-    public void reclaimSpace(double max_space) {
-        this.free_space = max_space - this.getOccupiedSpace();
+    public void reclaimSpace(double free_space) {
+        this.free_space += free_space;
     }
 
-    public boolean hasSpace(int chunkSize) {
-        if (this.getFreeSpace() >= chunkSize) {
-            return true;
+    public void deleteChunk(Chunk chunk) {
+        String file_path = directory.getPath() + "/file" + chunk.getFile_id() + "/chunk" + chunk.getChunk_no();
+        File file = new File(file_path);
+        file.delete();
+        for (int i = 0; i < this.storedChunks.size(); i++) {
+            if (this.storedChunks.get(i).getFile_id().equals(chunk.getFile_id()) && this.storedChunks.get(i).getChunk_no() == chunk.getChunk_no()) {
+                this.storedChunks.remove(i);
+                break;
+            }
         }
-
-        return false;
+        decrementChunkOccurences(chunk.getFile_id()+"-"+chunk.getChunk_no());
+        remove_peer_chunks(chunk.getFile_id()+"-"+chunk.getChunk_no(), PeerProtocol.getPeer().getPeer_id());
     }
 
     public void deleteFile(FileInfo fileInfo) {
@@ -285,36 +309,26 @@ public class Storage implements java.io.Serializable {
         return this.directory;
     }
 
-    public void add_peer_chunks(String chunkKey, String senderAddress, int senderPort) {
-        String[] peer = new String[2];
-        peer[0] = senderAddress;
-        peer[1] = Integer.toString(senderPort);
-
-        if (this.peers_with_chunks.containsKey(chunkKey)) {
-            this.peers_with_chunks.get(chunkKey).add(peer);
+    public void add_peer_chunks(String chunkKey, int peer_id) {
+        if (this.peers_with_chunks.containsKey(peer_id)) {
+            this.peers_with_chunks.get(peer_id).add(chunkKey);
         }
         else {
-            ArrayList<String[]> peers = new ArrayList<>();
-            peers.add(peer);
-            this.peers_with_chunks.put(chunkKey, peers);
+            ArrayList<String> chunks = new ArrayList<>();
+            chunks.add(chunkKey);
+            this.peers_with_chunks.put(peer_id, chunks);
         }
     }
 
-    public void remove_peer_chunks(String chunkKey, String senderAddress, int senderPort) {
-        if (this.peers_with_chunks.containsKey(chunkKey)) {
-            for (int i = 0; i < this.peers_with_chunks.get(chunkKey).size(); i++) {
-                String[] peer = this.peers_with_chunks.get(chunkKey).get(i);
-                if (peer[0].equals(senderAddress) && peer[1].equals(Integer.toString(senderPort))) {
-                    this.peers_with_chunks.get(chunkKey).remove(i);
+    public void remove_peer_chunks(String chunkKey, int peer_id) {
+        if (this.peers_with_chunks.containsKey(peer_id)) {
+            for (int i = 0; i < this.peers_with_chunks.get(peer_id).size(); i++) {
+                if (this.peers_with_chunks.get(peer_id).get(i).equals(chunkKey)) {
+                    this.peers_with_chunks.get(peer_id).remove(i);
                     return;
                 }
             }
         }
-    }
-
-    public void remove_entry_peer_chunks(String chunkKey) {
-        if (this.peers_with_chunks.containsKey(chunkKey))
-            this.peers_with_chunks.remove(chunkKey);
     }
 
     public class ChunkKeyComparator implements Comparator<String> {
@@ -333,5 +347,16 @@ public class Storage implements java.io.Serializable {
                 return 1;
             return 0;
         }
+    }
+
+    public boolean hasStored(String chunkKey) {
+        for (int key : peers_with_chunks.keySet()) {
+            for (int i = 0; i < peers_with_chunks.get(key).size(); i++) {
+                if (peers_with_chunks.get(key).get(i).equals(chunkKey))
+                    return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -1,4 +1,5 @@
-import java.math.BigInteger;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 
 public class MessageFactory {
     private String messageString;
@@ -9,246 +10,108 @@ public class MessageFactory {
         return messageString;
     }
 
-    ////////////////////////////////
-    /// BACKUP PROTOCOL MESSAGES ///
-    ////////////////////////////////
+    //<Version> PUTCHUNK <SenderId> <FileId> <ChunkNo> <ReplicationDeg> <CRLF><CRLF><Body>
+    public byte[] putChunkMsg(Chunk chunk, Integer replication_degree, int peer_id) {
 
-    //PUTCHUNK <FileId> <ChunkNo> <ReplicationDeg> <SenderAddress> <SenderPort>
-    public Message putChunkMsg(String senderAddress, int senderPort, Chunk chunk, Integer replication_degree) {
-
-        String[] header = new String[6];
-        header[0] = "PUTCHUNK";
-        header[1] = chunk.getFile_id();
-        header[2] = Integer.toString(chunk.getChunk_no());
-        header[3] = Integer.toString(replication_degree);
-        header[4] = senderAddress;
-        header[5] = Integer.toString(senderPort);
-
-        byte[] body = chunk.getContent();
-        Message putchunkMsg = new Message(header, body);
-
-        this.messageString = "PUTCHUNK" + " " + chunk.getFile_id() + " " + chunk.getChunk_no() + " " + replication_degree + " " + senderAddress + " " + senderPort;
+        String version = PeerProtocol.getProtocol_version();
+        String fileId = chunk.getFile_id();
+        int chunkNo = chunk.getChunk_no();
+        this.messageString = version + " " + "PUTCHUNK" + " " + peer_id + " " + fileId + " " + chunkNo + " " + replication_degree;
+        String headerTerms = this.messageString + " \r\n\r\n";
+        byte[] header = headerTerms.getBytes();
+        byte[] content = chunk.getContent();
+        byte[] putchunkMsg = new byte[header.length + content.length];
+        System.arraycopy(header, 0, putchunkMsg, 0, header.length);
+        System.arraycopy(content, 0, putchunkMsg, header.length, content.length);
 
         return putchunkMsg;
     }
 
-    //STORED <FileId> <ChunkNo> <SenderAddress> <SenderPort>
-    public Message storedMsg(String senderAddress, int senderPort, String fileId, int chunkNo) {
+    //<Version> STORED <SenderId> <FileId> <ChunkNo> <CRLF><CRLF>
+    public byte[] storedMsg(String version, int senderId, String fileId, int chunkNo) {
 
-        String[] header = new String[5];
-        header[0] = "STORED";
-        header[1] = fileId;
-        header[2] = Integer.toString(chunkNo);
-        header[3] = senderAddress;
-        header[4] = Integer.toString(senderPort);
-
-        Message storedMsg = new Message(header);
-
-        this.messageString = "STORED" + " " + fileId + " " + chunkNo + " " + senderAddress + " " + senderPort;
+        this.messageString = version + " " + "STORED" + " " + senderId + " " + fileId + " " + chunkNo;
+        String headerTerms = this.messageString + " \r\n\r\n";
+        byte[] header = headerTerms.getBytes();
+        byte[] storedMsg = new byte[header.length];
+        System.arraycopy(header, 0, storedMsg, 0, header.length);
 
         return storedMsg;
     }
 
-    //GETCHUNK <FileId> <ChunkNo> <SenderAddress> <SenderPort>
-    public Message getChunkMsg(String senderAddress, int senderPort, String fileId, int chunkNo) {
+    //<Version> GETCHUNK <SenderId> <FileId> <ChunkNo> <CRLF><CRLF>
+    public byte[] getChunkMsg(String version, int senderId, String fileId, int chunkNo) {
 
-        String[] header = new String[5];
-        header[0] = "GETCHUNK";
-        header[1] = fileId;
-        header[2] = Integer.toString(chunkNo);
-        header[3] = senderAddress;
-        header[4] = Integer.toString(senderPort);
-
-        Message getChunkMsg = new Message(header);
-
-        this.messageString = "GETCHUNK" + " " + fileId + " " + chunkNo + " " + senderAddress + " " + senderPort;
+        this.messageString = version + " " + "GETCHUNK" + " " + senderId + " " + fileId + " " + chunkNo;
+        String headerTerms = this.messageString + " \r\n\r\n";
+        byte[] header = headerTerms.getBytes();
+        byte[] getChunkMsg = new byte[header.length + header.length];
+        System.arraycopy(header, 0, getChunkMsg, 0, header.length);
 
         return getChunkMsg;
     }
 
-    //CHUNK <FileId> <ChunkNo> <SenderAddress> <SenderPort>
-    public Message chunkMsg(String senderAddress, int senderPort, String fileId, int chunkNo, byte[] body) {
-
-        String[] header = new String[5];
-        header[0] = "CHUNK";
-        header[1] = fileId;
-        header[2] = Integer.toString(chunkNo);
-        header[3] = senderAddress;
-        header[4] = Integer.toString(senderPort);
-
-        Message chunkMsg = new Message(header, body);
-
-        this.messageString = "CHUNK" + " " + fileId + " " + chunkNo + " " + senderAddress + " " + senderPort;
+    //<Version> CHUNK <SenderId> <FileId> <ChunkNo> <CRLF><CRLF><Body>
+    public byte[] chunkMsg(String version, int senderId, String fileId, int chunkNo, byte[] body) {
+        this.messageString = version + " " + "CHUNK" + " " + senderId + " " + fileId + " " + chunkNo;
+        String headerTerms = this.messageString + " \r\n\r\n";
+        byte[] header = headerTerms.getBytes();
+        byte[] chunkMsg = new byte[header.length + body.length];
+        System.arraycopy(header, 0, chunkMsg, 0, header.length);
+        System.arraycopy(body, 0, chunkMsg, header.length, body.length);
 
         return chunkMsg;
     }
 
-    //DELETE <FileId> <SenderAddress> <SenderPort>
-    public Message deleteMsg(String senderAddress, int senderPort, Chunk chunk) {
+    //<Version> CHUNKENH <SenderId> <FileId> <ChunkNo> <CRLF><CRLF>
+    public byte[] chunkEnhMsg(String version, int senderId, String fileId, int chunkNo) {
+        this.messageString = version + " " + "CHUNK" + " " + senderId + " " + fileId + " " + chunkNo;
+        try {
+            String headerTerms = this.messageString + " \r\n\r\n" + InetAddress.getLocalHost().getHostAddress();
+            byte[] header = headerTerms.getBytes();
+            return header;
+        }catch (UnknownHostException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
 
-        String[] header = new String[4];
-        header[0] = "DELETE";
-        header[1] = chunk.getFile_id();
-        header[2] = senderAddress;
-        header[3] = Integer.toString(senderPort);
+    //<Version> DELETE <SenderId> <FileId> <CRLF><CRLF>
+    public byte[] deleteMsg(Chunk chunk, int senderId) {
 
-        Message deleteMsg = new Message(header);
-
-        this.messageString = "DELETE" + " " + chunk.getFile_id() + " " + senderAddress + " " + senderPort;
+        String version = PeerProtocol.getProtocol_version();
+        String fileId = chunk.getFile_id();
+        this.messageString = version + " " + "DELETE" + " " + senderId + " " + fileId;
+        String deleteString = this.messageString + " \r\n\r\n";
+        byte[] header = deleteString.getBytes();
+        byte[] deleteMsg = new byte[header.length];
+        System.arraycopy(header, 0, deleteMsg, 0, header.length);
 
         return deleteMsg;
     }
 
-    //REMOVED <FileId> <ChunkNo> <SenderAddress> <SenderPort>
-    public Message reclaimMsg(String senderAddress, int senderPort, Chunk chunk) {
+    //<Version> REMOVED <SenderId> <FileId> <ChunkNo> <CRLF><CRLF>
+    public byte[] reclaimMsg(Chunk chunk, int senderId) {
 
-        String[] header = new String[5];
-        header[0] = "REMOVED";
-        header[1] = chunk.getFile_id();
-        header[2] = Integer.toString(chunk.getChunk_no());
-        header[3] = senderAddress;
-        header[4] = Integer.toString(senderPort);
-
-        Message reclaimMsg = new Message(header);
-
-        this.messageString = "REMOVED" + " " + chunk.getFile_id() + " " + chunk.getChunk_no() + " " + senderAddress + " " + senderPort;
+        String version = PeerProtocol.getProtocol_version();
+        String fileId = chunk.getFile_id();
+        int chunkNo = chunk.getChunk_no();
+        this.messageString = version + " " + "REMOVED" + " " + senderId + " " + fileId + " " + chunkNo;
+        String reclaimString = this.messageString + " \r\n\r\n";
+        byte[] header = reclaimString.getBytes();
+        byte[] reclaimMsg = new byte[header.length];
+        System.arraycopy(header, 0, reclaimMsg, 0, header.length);
 
         return reclaimMsg;
     }
 
-    //////////////////////
-    /// CHORD MESSAGES ///
-    //////////////////////
+    //<Version> AWAKE <SenderId> <CRLF><CRLF>
+    public byte[] awakeMsg(int senderId) {
+        String version = PeerProtocol.getProtocol_version();
+        this.messageString = version + " " + "AWAKE" + " " + senderId;
+        String deleteString = this.messageString + " \r\n\r\n";
+        byte[] awake = deleteString.getBytes();
 
-    //FINDSUCC <SenderId> <ReqIpAdress> <ReqPort> <ReqId>
-    public Message findSuccMsg(BigInteger msgId, String ip, int port, BigInteger id) {
-        String[] header = new String[5];
-        header[0] = "FINDSUCC";
-        header[1] = msgId.toString();
-        header[2] = ip;
-        header[3] = Integer.toString(port);
-        header[4] = id.toString();
-
-        Message findSucc = new Message(header);
-
-        this.messageString = "FINDSUCC "+msgId+" "+ip+" "+port+" "+id;
-
-        return findSucc;
+        return awake;
     }
-
-    //SUCC <SenderId> <SuccId> <SuccAddress> <SuccPort>
-    public Message replySuccMsg(BigInteger msgId, BigInteger succId, String succAddress, int succPort) {
-
-        String[] header = new String[5];
-        header[0] = "SUCC";
-        header[1] = msgId.toString();
-        header[2] = succId.toString();
-        header[3] = succAddress;
-        header[4] = Integer.toString(succPort);
-
-        Message replySucc = new Message(header);
-
-        this.messageString = "SUCC " + msgId+ " "+ succId+" "+succAddress+" "+succPort;
-
-        return replySucc;
-    }
-
-    //FINDSUCCFINGER <SenderId> <ReqIpAdress> <ReqPort> <ReqId> <FingerId>
-    public Message findSuccFingerMsg(BigInteger msgId, String ip, int port, BigInteger id, int fingerId) {
-
-        String[] header = new String[6];
-        header[0] = "FINDSUCCFINGER";
-        header[1] = msgId.toString();
-        header[2] = ip;
-        header[3] = Integer.toString(port);
-        header[4] = id.toString();
-        header[5] = Integer.toString(fingerId);
-
-        Message replySucc = new Message(header);
-
-        this.messageString = "FINDSUCCFINGER "+msgId+" "+ip+" "+port+" "+id+ " "+fingerId;
-
-        return replySucc;
-
-    }
-
-    //FINGERSUCC <SenderId> <SuccId> <SuccAddress> <SuccPort> <FingerId>
-    public Message replySuccFingerMsg(BigInteger msgId, BigInteger succId, String succAddress, int succPort, int fingerId) {
-
-        String[] header = new String[6];
-        header[0] = "FINGERSUCC";
-        header[1] = msgId.toString();
-        header[2] = succId.toString();
-        header[3] = succAddress;
-        header[4] = Integer.toString(succPort);
-        header[5] = Integer.toString(fingerId);
-
-        Message replySucc = new Message(header);
-
-        this.messageString = "FINGERSUCC " + msgId+ " "+ succId+" "+succAddress+" "+succPort +" "+fingerId;
-
-        return replySucc;
-    }
-
-    //NOTIFY <SenderId> <ReqIpAdress> <ReqPort>
-    public Message notifyMsg(BigInteger msgId, String address, int port) {
-
-        String[] header = new String[4];
-        header[0] = "NOTIFY";
-        header[1] = msgId.toString();
-        header[2] = address;
-        header[3] = Integer.toString(port);
-
-        Message notify = new Message(header);
-
-        this.messageString = "NOTIFY " + msgId+ " "+address+" "+port;
-
-        return notify;
-    }
-
-    //FINDPRED <SenderId> <IpAdress> <Port>
-    public Message findPredMsg(BigInteger msgId, String address, int port) {
-
-        String[] header = new String[4];
-        header[0] = "FINDPRED";
-        header[1] = msgId.toString();
-        header[2] = address;
-        header[3] = Integer.toString(port);
-
-        Message findPredMsg = new Message(header);
-
-        this.messageString = "FINDPRED " + msgId+" "+address+" "+port;
-
-        return findPredMsg;
-    }
-
-    //PRED <SenderId> <PredId> <PredAddress> <PredPort>
-    public Message predMsg(BigInteger msgId, BigInteger predId, String predAddress, int predPort) {
-
-        String[] header = new String[5];
-        header[0] = "PRED";
-        header[1] = msgId.toString();
-        header[2] = predId.toString();
-        header[3] = predAddress;
-        header[4] = Integer.toString(predPort);
-
-        Message predMsg = new Message(header);
-
-        this.messageString = "PRED " + msgId+" "+predId+" "+predAddress+" "+predPort;
-
-        return predMsg;
-    }
-
-    //CHECKPRED
-    public Message checkPredMsg() {
-        String[] header = new String[5];
-        header[0] = "CHECKPRED";
-
-        Message checkPredMsg = new Message(header);
-
-        this.messageString = "CHECKPRED";
-
-        return checkPredMsg;
-    }
-
 }
